@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Gateway</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0b1020;
+        --card: #151b31;
+        --text: #e8ecff;
+        --muted: #9aa4c7;
+        --accent: #7c9cff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at 20% 0%, #1b2550 0%, var(--bg) 55%);
+        color: var(--text);
+        font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        padding: 2rem;
+      }
+      main {
+        width: min(720px, 100%);
+        background: color-mix(in srgb, var(--card) 88%, transparent);
+        border: 1px solid #29325a;
+        border-radius: 20px;
+        padding: 2.5rem;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+      }
+      .badge {
+        display: inline-block;
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        border: 1px solid #33427a;
+        border-radius: 999px;
+        padding: 0.25rem 0.7rem;
+      }
+      h1 { margin: 1rem 0 0.5rem; font-size: clamp(2rem, 5vw, 3rem); }
+      p { color: var(--muted); }
+      nav { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
+      a {
+        color: var(--text);
+        text-decoration: none;
+        border: 1px solid #33427a;
+        border-radius: 10px;
+        padding: 0.55rem 0.85rem;
+      }
+      a:hover { border-color: var(--accent); color: var(--accent); }
+      code {
+        background: #0e1428;
+        border: 1px solid #29325a;
+        border-radius: 6px;
+        padding: 0.1rem 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="badge">backend online</span>
+      <h1>AI Gateway</h1>
+      <p>
+        The control plane is running. The web interface is intentionally a
+        placeholder for now; every workflow is available through the REST API.
+      </p>
+      <p>
+        Start with <code>POST /v1/bootstrap</code> and the deployment token, then
+        manage agents and enrollment through <code>/v1</code>. The OpenAPI schema
+        is live at <code>/docs</code>. The <code>agw</code> CLI runs
+        <code>serve</code>, <code>migrate</code>, and <code>admin recover</code>.
+      </p>
+      <nav>
+        <a href="/docs">OpenAPI docs</a>
+        <a href="/healthz">Health</a>
+        <a href="/v1/runtime">Runtime</a>
+        <a href="/.well-known/agw">Discovery</a>
+      </nav>
+    </main>
+  </body>
+</html>

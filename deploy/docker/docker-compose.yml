@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agw}
+      POSTGRES_USER: ${POSTGRES_USER:-agw}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AGW_RUNTIME: persistent
+      AGW_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-agw}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-agw}
+      AGW_DB_POOL_MODE: pooled
+      AGW_SECRET_KEY: ${AGW_SECRET_KEY:?set AGW_SECRET_KEY in .env}
+      AGW_BOOTSTRAP_ENABLED: ${AGW_BOOTSTRAP_ENABLED:-true}
+      AGW_BOOTSTRAP_TOKEN: ${AGW_BOOTSTRAP_TOKEN:?set AGW_BOOTSTRAP_TOKEN in .env}
+      AGW_PUBLIC_BASE_URL: ${AGW_PUBLIC_BASE_URL:-http://127.0.0.1:8080}
+      AGW_CA_ENABLED: "true"
+      AGW_CA_DIR: /data/ca
+      AGW_UI_ENABLED: "true"
+      AGW_PROJECT_ROOT: /app
+    command: ["sh", "-c", "agw migrate && agw serve --host 0.0.0.0 --port 8080"]
+    ports:
+      - "${AGW_PORT:-8080}:8080"
+    volumes:
+      - ca-data:/data/ca
+
+volumes:
+  postgres-data:
+  ca-data:

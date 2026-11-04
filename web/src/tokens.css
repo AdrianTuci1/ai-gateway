@@ -1,0 +1,86 @@
+/*
+ * Design tokens.
+ *
+ * The visual language is portal-style: flat surfaces, square corners,
+ * a dense 13px type scale, one accent blue, and borders that do the work
+ * shadows would do elsewhere. Every radius token is 0 on purpose; the UI is
+ * built from rectangles.
+ */
+:root {
+  /* Surfaces */
+  --bg: #1b1a19;
+  --bg-topbar: #1b1a19;
+  --bg-nav: #1b1a19;
+  --surface: #252423;
+  --surface-raised: #292827;
+  --surface-hover: #323130;
+  --surface-selected: #3b3a39;
+  --surface-input: #1b1a19;
+
+  /* Lines */
+  --border: #3b3a39;
+  --border-strong: #484644;
+  --border-subtle: #2e2d2c;
+
+  /* Text */
+  --text: #f3f2f1;
+  --text-secondary: #c8c6c4;
+  --text-muted: #a19f9d;
+  --text-disabled: #7a7876;
+
+  /* Accent and status */
+  --accent: #0078d4;
+  --accent-hover: #106ebe;
+  --accent-active: #005a9e;
+  --accent-text: #ffffff;
+  --link: #4da3ff;
+  --success: #6bb700;
+  --success-bg: #1f2d16;
+  --warning: #f7b731;
+  --warning-bg: #332b14;
+  --danger: #f1707b;
+  --danger-bg: #3a1d1f;
+  --info-bg: #1b2a3a;
+
+  /* Shape: square, always */
+  --radius-none: 0;
+  --radius: 0;
+  --border-width: 1px;
+
+  /* Type */
+  --font: "Segoe UI", "Segoe UI Web (West European)", -apple-system,
+    BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", "SF Mono", ui-monospace, Menlo, Consolas,
+    monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-title: 28px;
+  --lh-tight: 1.25;
+  --lh-base: 1.45;
+
+  /* Space */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* Layout */
+  --topbar-h: 48px;
+  --sidenav-w: 236px;
+  --control-h: 32px;
+  --row-h: 40px;
+  --z-sticky: 20;
+  --z-overlay: 100;
+
+  /* Motion: short and linear, no bounce */
+  --ease: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --dur: 120ms;
+}

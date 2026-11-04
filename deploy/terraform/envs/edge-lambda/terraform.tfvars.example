@@ -1,0 +1,21 @@
+aws_region             = "eu-central-1"
+name                   = "ai-gateway"
+environment            = "dev"
+
+# dynamodb: edge Lambda, no VPC or NAT gateway.
+# postgres: Lambda in private subnets with RDS and RDS Proxy.
+data_backend           = "dynamodb"
+
+# Leave null to use the default: false for dynamodb, true for postgres.
+enable_vpc             = null
+
+dynamodb_point_in_time_recovery = true
+dynamodb_deletion_protection    = false
+
+vpc_cidr               = "10.42.0.0/16"
+db_instance_class      = "db.t4g.micro"
+db_multi_az            = false
+enable_rds_proxy       = true
+
+lambda_memory_mb       = 1024
+lambda_timeout_seconds = 30

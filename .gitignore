@@ -1,0 +1,27 @@
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.tsbuildinfo
+build/
+dist/
+.env
+*.db
+*.db-shm
+*.db-wal
+.agw-ca/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+backend.tf
+crash.log
+override.tf

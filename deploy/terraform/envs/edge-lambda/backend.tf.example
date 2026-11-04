@@ -1,0 +1,13 @@
+# Copy to backend.tf for a local run. CI does not use this file: it generates
+# backend.tf from the deploy environment (deploy/ci/render-backend.sh) so every
+# run shares one state. The bucket and lock table are the organization's
+# Terraform state setup (core-infra docs/access.md); change the key per stack.
+terraform {
+  backend "s3" {
+    bucket         = "k8s-cluster-tfstate-864981730944-eu-central-1"
+    key            = "ai-gateway/edge-lambda/terraform.tfstate"
+    region         = "eu-central-1"
+    encrypt        = true
+    dynamodb_table = "terraform-locks"
+  }
+}

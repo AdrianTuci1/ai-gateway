@@ -1,0 +1,232 @@
+# Deploy the AI Gateway edge stack: Lambda plus DynamoDB (default) or Postgres.
+#
+# Manual only, by decision: `workflow_dispatch` is the single trigger, so a push
+# starts nothing and a pull request runs nothing. Run it with:
+#
+#   gh workflow run deploy.yml
+#   gh workflow run deploy.yml -f data_backend=postgres -f image_tag=sha-abc1234
+#
+# Credentials come from Google Secret Manager, not from repository secrets.
+# GitHub hands the run a short-lived OIDC token, Google trades it for the service
+# account, and the whole deploy environment is read from one secret:
+#
+#   staticlabs/ai-gateway-deploy-env   JSON: AWS keys, region, state bucket, ...
+#
+# The repository holds two variables whose names are public, same as core-infra:
+#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT
+#
+# Terraform state is shared, not local: the bucket and the lock table belong to
+# the organization's state setup. See deploy/terraform/README.md and
+# core-infra docs/access.md.
+# HARD RULE: this workflow may only be triggered by `workflow_dispatch`. It must
+# NEVER run on `pull_request`, because a privileged deploy must always be asked
+# for explicitly.
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      data_backend:
+        description: "Storage backend for the edge stack"
+        required: true
+        default: dynamodb
+        type: choice
+        options:
+          - dynamodb
+          - postgres
+      environment_name:
+        description: "Value for the `environment` variable; it is part of every resource name"
+        required: true
+        default: prod
+        type: string
+      image_tag:
+        description: "Image tag to build; empty builds `sha-<short commit>`"
+        required: false
+        default: ""
+        type: string
+      apply:
+        description: "Apply the plan; set to false for a plan-only run"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  # `google-github-actions/auth` needs the run's OIDC token; without it the
+  # exchange fails with "Unable to get ACTIONS_ID_TOKEN_REQUEST_URL".
+  id-token: write
+
+# Two applies must never overlap: one state, one stack, one lock.
+concurrency:
+  group: ai-gateway-deploy
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "1"
+  TF_INPUT: "0"
+  ENV_DIR: deploy/terraform/envs/edge-lambda
+  TARGET_ENV: ${{ inputs.environment_name }}
+  DATA_BACKEND: ${{ inputs.data_backend }}
+  APPLY: ${{ inputs.apply }}
+
+jobs:
+  deploy:
+    name: plan and apply
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check the repository variables
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}" ] || missing+=(GCP_WORKLOAD_IDENTITY_PROVIDER)
+          [ -n "${{ vars.GCP_SERVICE_ACCOUNT }}" ] || missing+=(GCP_SERVICE_ACCOUNT)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Set the repository variables ${missing[*]} (gh variable set ... -R <owner>/<repo>). Their values are in core-infra docs/ci.md."
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud (OIDC)
+        id: gcp
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      # One secret holds the whole deploy environment, so a new credential is a
+      # new version in Secret Manager, not a manual edit in GitHub.
+      - name: Read the deploy environment from Secret Manager
+        id: secret
+        uses: google-github-actions/get-secretmanager-secrets@v2
+        with:
+          secrets: |-
+            deploy_env:staticlabs/ai-gateway-deploy-env
+
+      - name: Load the deploy environment
+        env:
+          DEPLOY_ENV_FILE: ${{ steps.secret.outputs.deploy_env }}
+        run: ./deploy/ci/load-deploy-env.sh "$DEPLOY_ENV_FILE"
+
+      - name: Check the AWS identity
+        run: aws sts get-caller-identity --query Arn --output text
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          # The wrapper buffers and rewrites output; the outputs below are read
+          # with `terraform output`, so let it behave normally.
+          terraform_wrapper: false
+
+      - name: Render the S3 backend
+        run: ./deploy/ci/render-backend.sh
+
+      - name: Terraform init
+        working-directory: ${{ env.ENV_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform plan
+        if: env.APPLY != 'true'
+        working-directory: ${{ env.ENV_DIR }}
+        run: |
+          set -euo pipefail
+          terraform plan -input=false \
+            -var="environment=$TARGET_ENV" \
+            -var="data_backend=$DATA_BACKEND"
+
+      # The image has to exist before the full apply: the Lambda is created from
+      # it. So: create the repository, build, push, then apply everything.
+      - name: Ensure the ECR repository exists
+        if: env.APPLY == 'true'
+        working-directory: ${{ env.ENV_DIR }}
+        run: |
+          set -euo pipefail
+          terraform apply -auto-approve -input=false \
+            -var="environment=$TARGET_ENV" \
+            -target=aws_ecr_repository.app
+
+      - name: Build and push the image
+        if: env.APPLY == 'true'
+        id: image
+        working-directory: ${{ env.ENV_DIR }}
+        run: |
+          set -euo pipefail
+          repository=$(terraform output -raw ecr_repository_url)
+          region=$(terraform output -raw aws_region)
+          tag="${IMAGE_TAG:-sha-$(git rev-parse --short=12 HEAD)}"
+          image="$repository:$tag"
+
+          aws ecr get-login-password --region "$region" |
+            docker login --username AWS --password-stdin "${repository%%/*}"
+          docker build --platform linux/amd64 \
+            -f "$GITHUB_WORKSPACE/deploy/docker/Dockerfile.lambda" \
+            -t "$image" "$GITHUB_WORKSPACE"
+          docker push "$image"
+
+          echo "image=$image" >>"$GITHUB_OUTPUT"
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+
+      - name: Terraform apply
+        if: env.APPLY == 'true'
+        working-directory: ${{ env.ENV_DIR }}
+        run: |
+          set -euo pipefail
+          terraform apply -auto-approve -input=false \
+            -var="environment=$TARGET_ENV" \
+            -var="data_backend=$DATA_BACKEND" \
+            -var="image_uri=${{ steps.image.outputs.image }}"
+
+      # A green apply only means the resources exist. This asks the function to
+      # answer through API Gateway and the store behind it.
+      - name: Smoke test the API
+        if: env.APPLY == 'true'
+        id: smoke
+        working-directory: ${{ env.ENV_DIR }}
+        run: |
+          set -euo pipefail
+          api_url=$(terraform output -raw api_url)
+          echo "api_url=$api_url" >>"$GITHUB_OUTPUT"
+          for attempt in $(seq 1 10); do
+            if curl -fsS --max-time 10 "$api_url/healthz" | grep -q '"status":"ok"'; then
+              echo "healthz ok on attempt $attempt"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::$api_url/healthz did not answer with status ok"
+          exit 1
+
+      - name: Summary
+        if: always()
+        working-directory: ${{ env.ENV_DIR }}
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          API_URL: ${{ steps.smoke.outputs.api_url }}
+        run: |
+          set -euo pipefail
+          output() {
+            local value
+            value=$(terraform output -json "$1" 2>/dev/null | jq -r '. // empty' 2>/dev/null) || true
+            printf '%s' "${value:-n/a}"
+          }
+          {
+            echo "## AI Gateway deploy"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| backend | \`$DATA_BACKEND\` |"
+            echo "| environment | \`$TARGET_ENV\` |"
+            echo "| apply | \`$APPLY\` |"
+            echo "| image | \`${IMAGE:-not built}\` |"
+            echo "| api | ${API_URL:-not applied} |"
+            echo "| state | \`s3://${TF_STATE_BUCKET:-unknown}/${TF_STATE_KEY:-ai-gateway/edge-lambda/terraform.tfstate}\` |"
+            if [ "$APPLY" = "true" ]; then
+              echo "| dynamodb table | \`$(output dynamodb_table_name)\` |"
+              echo "| migration function | \`$(output migration_function_name)\` |"
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
