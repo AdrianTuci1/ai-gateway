@@ -4,6 +4,8 @@ Control plane for agent identities, credentials, and tool access. FastAPI
 backend with a React admin UI and one store interface backed by Postgres/SQLite
 or DynamoDB.
 
+![AI Gateway overview](docs/assets/overview.jpg)
+
 ## Deploy
 
 Edge stack (API Gateway, Lambda, DynamoDB) from a checkout with AWS credentials:
