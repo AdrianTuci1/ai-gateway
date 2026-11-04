@@ -4,7 +4,7 @@
 # Terraform state setup (core-infra docs/access.md); change the key per stack.
 terraform {
   backend "s3" {
-    bucket         = "k8s-cluster-tfstate-864981730944-eu-central-1"
+    bucket         = "my-terraform-state-bucket"
     key            = "ai-gateway/edge-lambda/terraform.tfstate"
     region         = "eu-central-1"
     encrypt        = true
