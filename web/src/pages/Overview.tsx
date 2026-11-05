@@ -6,6 +6,7 @@ import {
   getWorkspace,
   type IdentityGroup,
   type Inventory,
+  type Me,
   type TraceSummary,
 } from "../api";
 import { DataTable, type Column, type TableRow } from "../components/DataTable";
@@ -23,9 +24,14 @@ export function Overview() {
       api<IdentityGroup[]>(`/v1/workspaces/${ws}/identity-groups`).catch(() => []),
     [ws],
   );
-  const traces = useAsync(
-    () => api<TraceSummary[]>(`/v1/workspaces/${ws}/traces?limit=8`).catch(() => []),
-    [ws],
+  const me = useAsync(() => api<Me>("/v1/me"), [ws]);
+  const canReadTraces = (me.data?.permissions ?? []).includes("audit:read");
+  const traces = useAsync<TraceSummary[]>(
+    () =>
+      canReadTraces
+        ? api<TraceSummary[]>(`/v1/workspaces/${ws}/traces?limit=8`).catch(() => [])
+        : Promise.resolve([]),
+    [ws, canReadTraces],
   );
 
   const counts = inventory.data?.counts;
@@ -133,7 +139,10 @@ export function Overview() {
         <Stat label="Identity groups" value={identities.data?.length} loading={identities.loading} />
       </div>
 
-      <div className="grid grid--sidebar" style={{ marginTop: 16 }}>
+      <div
+        className={canReadTraces ? "grid grid--sidebar" : ""}
+        style={{ marginTop: 16 }}
+      >
         <section>
           <div className="section-title">
             Resource groups
@@ -151,47 +160,48 @@ export function Overview() {
           )}
         </section>
 
-        <section>
-          <div className="section-title">
-            Recent traces
-            <Link to="/tracing" className="small" style={{ marginLeft: "auto", fontWeight: 400 }}>
-              Open tracing
-            </Link>
-          </div>
-          <div className="table-wrap">
-            <table className="grid-table">
-              <thead>
-                <tr>
-                  <th>Operation</th>
-                  <th style={{ width: 90 }} className="cell-num">
-                    Duration
-                  </th>
-                  <th style={{ width: 90 }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(traces.data ?? []).map((trace) => (
-                  <tr key={trace.trace_id}>
-                    <td>
-                      <div className="truncate" style={{ maxWidth: 170 }} title={trace.root_name}>
-                        <Link to={`/tracing/${trace.trace_id}`} className="mono">
-                          {trace.root_name}
-                        </Link>
-                      </div>
-                    </td>
-                    <td className="cell-num mono">{fmtDuration(trace.duration_ms)}</td>
-                    <td>
-                      <StatusBadge status={trace.status} />
-                    </td>
-                  </tr>
-                ))}
-                {(traces.data ?? []).length === 0 ? (
+        {canReadTraces ? (
+          <section>
+            <div className="section-title">
+              Recent traces
+              <Link to="/tracing" className="small" style={{ marginLeft: "auto", fontWeight: 400 }}>
+                Open tracing
+              </Link>
+            </div>
+            <div className="table-wrap">
+              <table className="grid-table">
+                <thead>
                   <tr>
-                    <td colSpan={3} className="muted">
-                      No requests recorded yet. Call the API to see traces here.
-                    </td>
+                    <th>Operation</th>
+                    <th style={{ width: 90 }} className="cell-num">
+                      Duration
+                    </th>
+                    <th style={{ width: 90 }}>Status</th>
                   </tr>
-                ) : null}
+                </thead>
+                <tbody>
+                  {(traces.data ?? []).map((trace) => (
+                    <tr key={trace.trace_id}>
+                      <td>
+                        <div className="truncate" style={{ maxWidth: 170 }} title={trace.root_name}>
+                          <Link to={`/tracing/${trace.trace_id}`} className="mono">
+                            {trace.root_name}
+                          </Link>
+                        </div>
+                      </td>
+                      <td className="cell-num mono">{fmtDuration(trace.duration_ms)}</td>
+                      <td>
+                        <StatusBadge status={trace.status} />
+                      </td>
+                    </tr>
+                  ))}
+                  {(traces.data ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="muted">
+                        No requests recorded yet. Call the API to see traces here.
+                      </td>
+                    </tr>
+                  ) : null}
               </tbody>
             </table>
           </div>
@@ -204,7 +214,8 @@ export function Overview() {
               </span>
             </div>
           </div>
-        </section>
+          </section>
+        ) : null}
       </div>
     </Shell>
   );
