@@ -1003,6 +1003,21 @@ table.grid-table {
   text-decoration: none;
 }
 
+.grid-table .role-select {
+  height: 26px;
+  padding: 0 var(--sp-2);
+  background: var(--surface-input);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.grid-table .role-select:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+
 .grid-table th.cell-narrow,
 .grid-table td.cell-narrow {
   width: 34px;

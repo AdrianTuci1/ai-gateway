@@ -441,6 +441,18 @@ class IdentityInviteCreate(BaseModel):
     role: str | None = Field(default=None, max_length=80)
 
 
+class MembershipRoleUpdate(BaseModel):
+    role: str = Field(min_length=1, max_length=80)
+
+
+class MembershipRoleOut(BaseModel):
+    kind: Literal["user", "agent"]
+    id: uuid.UUID
+    role: str
+    permissions: list[str]
+    status: str
+
+
 class IdentityInviteCreated(BaseModel):
     id: uuid.UUID
     identity_id: uuid.UUID

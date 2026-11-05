@@ -964,6 +964,14 @@ class DynamoStore:
             values={":role_id": str(role_id)},
             condition="attribute_exists(pk)",
         )
+        if membership.identity_id is not None:
+            await self._update(
+                IDENTITY_MEMBERS_PK.format(identity_id=membership.identity_id),
+                f"{membership.principal_type}#{membership.principal_id}",
+                "SET role_id = :role_id",
+                values={":role_id": str(role_id)},
+                condition="attribute_exists(pk)",
+            )
 
     async def list_memberships(self, workspace_id: uuid.UUID) -> list[Membership]:
         items = await self._query(WS_MEMBERS_PK.format(workspace_id=workspace_id))

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
 
@@ -17,6 +18,8 @@ from agw.api.schemas import (
     IdentityInviteCreate,
     IdentityInviteCreated,
     IdentityInvitePreview,
+    MembershipRoleOut,
+    MembershipRoleUpdate,
     UserOut,
 )
 from agw.audit.service import record
@@ -182,6 +185,83 @@ async def get_identity_group(
         principal=principal,
         services_by_id=services,
         signup=signups.get(identity.id),
+    )
+
+
+async def _has_other_owner(
+    store: Store, workspace_id: uuid.UUID, membership: Membership
+) -> bool:
+    for other in await store.list_memberships(workspace_id):
+        if (
+            other.id == membership.id
+            or other.status != "active"
+            or other.principal_type != "user"
+        ):
+            continue
+        other_role = await store.get_role(other.role_id)
+        if other_role is not None and other_role.name == "owner":
+            return True
+    return False
+
+
+@router.patch(
+    "/v1/workspaces/{ws}/members/{kind}/{member_id}/role",
+    response_model=MembershipRoleOut,
+)
+async def update_member_role(
+    kind: Literal["user", "agent"],
+    member_id: uuid.UUID,
+    body: MembershipRoleUpdate,
+    request: Request,
+    workspace: Workspace = Depends(get_workspace),
+    principal: Principal = Depends(get_principal),
+    store: Store = Depends(get_store),
+) -> MembershipRoleOut:
+    require_permission(principal, "member:update_role")
+    membership = await store.get_membership(workspace.id, kind, member_id)
+    if membership is None:
+        raise not_found("member")
+
+    role = await store.resolve_role(workspace.id, body.role.strip())
+    if role is None:
+        raise ApiError(422, "invalid_role", f"unknown role: {body.role}")
+    if kind == "agent" and not role.name.startswith("agent:"):
+        raise ApiError(422, "invalid_role", "agents require an agent role")
+    if kind == "user" and role.name.startswith("agent:"):
+        raise ApiError(422, "invalid_role", "agent roles cannot be assigned to people")
+
+    current = await store.get_role(membership.role_id)
+    current_name = current.name if current is not None else "unknown"
+    if current_name != role.name:
+        if current_name == "owner" and not await _has_other_owner(
+            store, workspace.id, membership
+        ):
+            raise ApiError(409, "last_owner", "the workspace needs at least one owner")
+        await store.set_membership_role(membership, role.id)
+        await record(
+            store,
+            workspace_id=workspace.id,
+            actor_type=principal.kind,
+            actor_id=principal.id,
+            action="member.role_changed",
+            resource_type="membership",
+            resource_id=str(membership.id),
+            trace_id=request.state.trace_id,
+            meta={
+                "principal_type": kind,
+                "principal_id": str(member_id),
+                "from": current_name,
+                "to": role.name,
+            },
+        )
+        await store.commit()
+
+    return MembershipRoleOut(
+        kind=kind,
+        id=member_id,
+        role=role.name,
+        permissions=list(role.permissions),
+        status=membership.status or "active",
     )
 
 

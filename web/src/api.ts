@@ -122,6 +122,14 @@ export type IdentityEntity = {
   last_seen_at: string | null;
 };
 
+export type MembershipRole = {
+  kind: "user" | "agent";
+  id: string;
+  role: string;
+  permissions: string[];
+  status: string;
+};
+
 export type IdentityGroup = {
   id: string;
   name: string;

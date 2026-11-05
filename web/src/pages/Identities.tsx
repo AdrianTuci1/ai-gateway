@@ -13,6 +13,7 @@ import {
   type SignupRequest,
 } from "../api";
 import { DataTable, type Column, type TableRow } from "../components/DataTable";
+import { Icon } from "../components/Icon";
 import { Shell } from "../components/Shell";
 import {
   Badge,
@@ -24,6 +25,12 @@ import {
 import { useAsync } from "../hooks";
 
 const HUMAN_ROLES = ["viewer", "developer", "operator", "admin", "owner"];
+const AGENT_ROLES = [
+  "agent:executor",
+  "agent:requester",
+  "agent:editor",
+  "agent:admin",
+];
 
 export function Identities() {
   const ws = getWorkspace();
@@ -47,6 +54,7 @@ export function Identities() {
   };
 
   const workspaceAdmin = (me.data?.permissions ?? []).includes("identity:approve");
+  const canEditRoles = (me.data?.permissions ?? []).includes("member:update_role");
   const pending = signups.data ?? [];
   const all = groups.data ?? [];
 
@@ -225,7 +233,13 @@ export function Identities() {
     key: group.id,
     data: group,
     nestedTitle: "Entities",
-    children: <GroupDetail group={group} />,
+    children: (
+      <GroupDetail
+        group={group}
+        canEditRoles={canEditRoles}
+        onChanged={reload}
+      />
+    ),
   }));
 
   const entityCount = all.reduce((total, group) => total + group.entities.length, 0);
@@ -341,7 +355,39 @@ export function Identities() {
   );
 }
 
-function GroupDetail({ group }: { group: IdentityGroup }) {
+function GroupDetail({
+  group,
+  canEditRoles,
+  onChanged,
+}: {
+  group: IdentityGroup;
+  canEditRoles: boolean;
+  onChanged: () => void;
+}) {
+  const ws = getWorkspace();
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const changeRole = async (entity: IdentityEntity, role: string) => {
+    if (role === entity.role) return;
+    const key = `${entity.kind}-${entity.id}`;
+    setSavingId(key);
+    setError(null);
+    try {
+      await api(`/v1/workspaces/${ws}/members/${entity.kind}/${entity.id}/role`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      });
+      onChanged();
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError ? caught.message : "Could not change the role.",
+      );
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   if (group.entities.length === 0) {
     return (
       <div className="muted small">
@@ -351,6 +397,14 @@ function GroupDetail({ group }: { group: IdentityGroup }) {
   }
   return (
     <div className="stack">
+      {error ? (
+        <div className="callout callout--error">
+          <div className="row" style={{ gap: 8 }}>
+            <Icon name="alert" size={14} />
+            {error}
+          </div>
+        </div>
+      ) : null}
       <div className="nested">
         <table className="grid-table">
           <thead>
@@ -364,38 +418,63 @@ function GroupDetail({ group }: { group: IdentityGroup }) {
             </tr>
           </thead>
           <tbody>
-            {group.entities.map((entity) => (
-              <tr key={`${entity.kind}-${entity.id}`}>
-                <td>
-                  <span className="cell-name">
-                    {entity.kind === "agent" ? (
-                      <Link to={`/resources/agent/${entity.id}`}>{entity.name}</Link>
+            {group.entities.map((entity) => {
+              const catalog = entity.kind === "agent" ? AGENT_ROLES : HUMAN_ROLES;
+              const options = catalog.includes(entity.role)
+                ? catalog
+                : [entity.role, ...catalog];
+              const key = `${entity.kind}-${entity.id}`;
+              return (
+                <tr key={key}>
+                  <td>
+                    <span className="cell-name">
+                      {entity.kind === "agent" ? (
+                        <Link to={`/resources/agent/${entity.id}`}>{entity.name}</Link>
+                      ) : (
+                        <>
+                          {entity.name}
+                          {entity.email ? (
+                            <span className="muted small"> · {entity.email}</span>
+                          ) : null}
+                        </>
+                      )}
+                      {entity.is_identity_admin ? (
+                        <Badge tone="info">identity admin</Badge>
+                      ) : null}
+                    </span>
+                  </td>
+                  <td>
+                    <Badge tone={entity.kind === "user" ? "info" : "plain"}>
+                      {entity.kind}
+                    </Badge>
+                  </td>
+                  <td className="mono">
+                    {canEditRoles ? (
+                      <select
+                        className="role-select"
+                        aria-label={`Role for ${entity.name}`}
+                        value={entity.role}
+                        disabled={savingId === key}
+                        onChange={(event) => changeRole(entity, event.target.value)}
+                      >
+                        {options.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
-                      <>
-                        {entity.name}
-                        {entity.email ? (
-                          <span className="muted small"> · {entity.email}</span>
-                        ) : null}
-                      </>
+                      entity.role
                     )}
-                    {entity.is_identity_admin ? (
-                      <Badge tone="info">identity admin</Badge>
-                    ) : null}
-                  </span>
-                </td>
-                <td>
-                  <Badge tone={entity.kind === "user" ? "info" : "plain"}>
-                    {entity.kind}
-                  </Badge>
-                </td>
-                <td className="mono">{entity.role}</td>
-                <td className="cell-num">{entity.grant_count}</td>
-                <td>
-                  <StatusBadge status={entity.status} />
-                </td>
-                <td className="nowrap">{fmtDate(entity.last_seen_at)}</td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="cell-num">{entity.grant_count}</td>
+                  <td>
+                    <StatusBadge status={entity.status} />
+                  </td>
+                  <td className="nowrap">{fmtDate(entity.last_seen_at)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
